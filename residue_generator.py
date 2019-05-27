@@ -118,7 +118,7 @@ class MySymbol(object):
 
 class Constant(MySymbol):
     def __init__(self, value):
-        assert isinstance(value, (int, float)), "Invalid value ({}) for Constant. The value of a constant must be numeric type.".format(value)
+        assert isinstance(value, int) or isinstance(value, float), "Invalid value ({}) for Constant. The value of a constant must be numeric type.".format(value)
         MySymbol.__init__(self, value, True)
 
 class Variable(MySymbol):
@@ -162,32 +162,29 @@ class GroundSymbol(Constant):
         #Constant.__init__(self, name)
         self.groundedFrom = groundedFrom
 
-class Predicate(object):
-    _PREDICATE_LIST = ['bogus', '=', '!=', '>', '<=', '<', '>='] # we use a bogus predicate to take up predicate id 0
+class Literal(object):
+    _LITERAL_LIST = ['bogus', '=', '!=', '>', '<=', '<', '>='] # we use a bogus literal to take up literal id 0
     _ARG_NUM_LIST = [0, 2, 2, 2, 2, 2, 2]
-    predicateIdDict = {'Null':0, '=':1, '!=':2, '>':3, '<=':4, '<':5, '>=':6} # FIX ME: the arithmetic operators won't have their opposite ones, making arithmetic operators as predicates is probably not a good choice. Shall make an arithmetic expression return a symbol in the future
-    _PREDICATE_ID_BASE = 3
-    _BUILTIN_PREDICATE_NUMBER = 7
+    literalIdDict = {'Null':0, '=':1, '!=':2, '>':3, '<=':4, '<':5, '>=':6}
 
     def __init__(self, name, argumentList, negated = False):
         self._ARGUMENTS = []
         self._ARGTAGS = []
         self.substitutionTag = 0
         self.expandTo = []
-        # a predicate instance is initiated by its name, and a list of its argument. Each element in the argument list should be a MySymbol object.
+        # a literal instance is initiated by its name, and a list of its argument. Each element in the argument list should be a MySymbol object.
         self.name = name
-        if name in self.predicateIdDict:
-            self.id = self.predicateIdDict[name]
-            assert self.argNum == len(argumentList), "predicate \'{}\' passed invalid number of arguments: {}".format(name, [s.show() for s in argumentList])
+        if name in self.literalIdDict:
+            self.id = self.literalIdDict[name]
+            assert self.argNum == len(argumentList), "literal \'{}\' passed invalid number of arguments: {}".format(name, [s.show() for s in argumentList])
         else:
-            self.id = len(self._PREDICATE_LIST)
-            self._PREDICATE_LIST.append(name)
+            self.id = len(self._LITERAL_LIST)
+            self._LITERAL_LIST.append(name)
             self._ARG_NUM_LIST.append(len(argumentList))
-            #self.id = len(self._PREDICATE_LIST) - self._BUILTIN_PREDICATE_NUMBER + self._PREDICATE_ID_BASE
-            self.predicateIdDict[name] = self.id
+            self.literalIdDict[name] = self.id
 
-            #construct a z3 function for the new predicate
-            #predicate2Z3Fun[name] = Function(name, [RealSort()] * len(argumentList) + [BoolSort()])
+            #construct a z3 function for the new literal
+            #literal2Z3Fun[name] = Function(name, [RealSort()] * len(argumentList) + [BoolSort()])
 
         self.argIdx = {} # argIdx maps a symbol id to a list of indices where the symbol appears in the literal
         for arg in argumentList:
@@ -316,22 +313,22 @@ class Predicate(object):
         return out
 
     def copy(self):
-        return Predicate(self.name, self.arguments, negated=self.isNegated)
+        return Literal(self.name, self.arguments, negated=self.isNegated)
 
-class NullPredicate(Predicate):
-    """A null predicate used for head when it is empty."""
+class NullLiteral(Literal):
+    """A null literal used for head when it is empty."""
     def __init__(self):
-        Predicate.__init__(self, 'Null', [])
+        Literal.__init__(self, 'Null', [])
     
     def copy(self):
-        return NullPredicate()
+        return NullLiteral()
 
     def show(self):
         return ''
 
-class ComparisonPredicate(Predicate):
+class ComparisonLiteral(Literal):
     def __init__(self, name, lhs, rhs):
-        Predicate.__init__(self, name, [lhs, rhs])
+        Literal.__init__(self, name, [lhs, rhs])
 
     @property
     def lhs(self):
@@ -345,7 +342,7 @@ class ComparisonPredicate(Predicate):
         return f"{self._ARGUMENTS[0][-1].show()} {self.name} {self._ARGUMENTS[1][-1].show()}"
 
     def copy(self):
-        ret = ComparisonPredicate(self.name, self.lhs, self.rhs)
+        ret = ComparisonLiteral(self.name, self.lhs, self.rhs)
         if self.isNegated:
             ret.negate()
         return ret
@@ -353,96 +350,96 @@ class ComparisonPredicate(Predicate):
     def evaluate(self):
         return comparisonFun[self.name](self.lhs, self.rhs)
 
-class Equal(ComparisonPredicate):
+class Equal(ComparisonLiteral):
     def __init__(self, lhs, rhs):
-        ComparisonPredicate.__init__(self, '=', lhs, rhs)
+        ComparisonLiteral.__init__(self, '=', lhs, rhs)
     
     def negate(self):
         self.name = '!='
-        self.id = Predicate.predicateIdDict[self.name]
+        self.id = Literal.literalIdDict[self.name]
 
     def copy(self):
         return Equal(self.lhs, self.rhs)
 
-class NEqual(ComparisonPredicate):
+class NEqual(ComparisonLiteral):
     def __init__(self, lhs, rhs):
-        ComparisonPredicate.__init__(self, '!=', lhs, rhs)
+        ComparisonLiteral.__init__(self, '!=', lhs, rhs)
 
     def negate(self):
         self.name = '='
-        self.id = Predicate.predicateIdDict[self.name]
+        self.id = Literal.literalIdDict[self.name]
 
     def copy(self):
         return NEqual(self.lhs, self.rhs)
 
-class Grt(ComparisonPredicate):
+class Grt(ComparisonLiteral):
     def __init__(self, lhs, rhs):
-        ComparisonPredicate.__init__(self, '>', lhs, rhs)
+        ComparisonLiteral.__init__(self, '>', lhs, rhs)
 
     def negate(self):
         self.name = '<='
-        self.id = Predicate.predicateIdDict[self.name]
+        self.id = Literal.literalIdDict[self.name]
     
     def copy(self):
         return Grt(self.lhs, self.rhs)
 
-class GrtEql(ComparisonPredicate):
+class GrtEql(ComparisonLiteral):
     def __init__(self, lhs, rhs):
-        ComparisonPredicate.__init__(self, '>=', lhs, rhs)
+        ComparisonLiteral.__init__(self, '>=', lhs, rhs)
 
     def negate(self):
         self.name = '<'
-        self.id = Predicate.predicateIdDict[self.name]
+        self.id = Literal.literalIdDict[self.name]
 
     def copy(self):
         return GrtEql(self.lhs, self.rhs)
 
-class Sml(ComparisonPredicate):
+class Sml(ComparisonLiteral):
     def __init__(self, lhs, rhs):
-        ComparisonPredicate.__init__(self, '<', lhs, rhs)
+        ComparisonLiteral.__init__(self, '<', lhs, rhs)
 
     def negate(self):
         self.name = '>='
-        self.id = Predicate.predicateIdDict[self.name]
+        self.id = Literal.literalIdDict[self.name]
 
     def copy(self):
         return Sml(self.lhs, self.rhs)
 
-class SmlEql(ComparisonPredicate):
+class SmlEql(ComparisonLiteral):
     def __init__(self, lhs, rhs):
-        ComparisonPredicate.__init__(self, '<=', lhs, rhs)
+        ComparisonLiteral.__init__(self, '<=', lhs, rhs)
 
     def negate(self):
         self.name = '>'
-        self.id = Predicate.predicateIdDict[self.name]
+        self.id = Literal.literalIdDict[self.name]
     
     def copy(self):
         return SmlEql(self.lhs, self.rhs)
 
-class ExpansionPredicate(Equal):
+class ExpansionLiteral(Equal):
     def __init__(self, lhs, rhs, expandFrom):
         Equal.__init__(self,lhs, rhs)
         self.expandFrom = expandFrom
 
     def copy(self):
-        ret = ExpansionPredicate(self.lhs, self.rhs, self.expandFrom)
+        ret = ExpansionLiteral(self.lhs, self.rhs, self.expandFrom)
         if self.isNegated:
             ret.negate()
         return ret
 
-class Function(Predicate):
+class Function(Literal):
     """
-    Although this class inherits from Predicates class, this is only for convenience, as a Function object is actually a function expression.
+    Although this class inherits from Literals class, this is only for convenience, as a Function object is actually a function expression.
     """
     functionDict = {**comparisonFun, **arithmeticFun}
     def __init__(self, name, argumentList):
-        Predicate.__init__(self, name, argumentList)
+        Literal.__init__(self, name, argumentList)
 
     def substitute(self, replacingSym, replacedSym):
         for arg in self.arguments:
             if isinstance(arg, FunctionSymbol):
                 arg.function.substitute(replacingSym, replacedSym)
-        Predicate.substitute(self, replacingSym, replacedSym)
+        Literal.substitute(self, replacingSym, replacedSym)
     
     def evaluate(self):
         return self.functionDict[self.name](*self.arguments)
@@ -500,54 +497,54 @@ class Divide(BinaryOperator):
     def __init__(self, lhs, rhs):
         BinaryOperator.__init__(self, '/', lhs, rhs)
 
-class PredicateSet(object):
+class LiteralSet(object):
     """
-    A set of predicates in conjunction or disjunction, each predicate may or may not be negated.
+    A set of literals in conjunction or disjunction, each literal may or may not be negated.
     """
-    def __init__(self, predicates, conjunction = True):
+    def __init__(self, literals, conjunction = True):
         self.isConjunction = conjunction
-        self.predicateIdxDict = {}
-        self.predicates = []
+        self.literalIdxDict = {}
+        self.literals = []
         self.substitutionTag = 0
 
-        if isinstance(predicates, Iterable):
-            for predicate in predicates:
-                self.add_predicate(predicate)
+        if isinstance(literals, Iterable):
+            for literal in literals:
+                self.add_literal(literal)
         else:
-            self.add_predicate(predicates)
+            self.add_literal(literals)
 
     def __getitem__(self, key):
-        return self.predicates[key]
+        return self.literals[key]
 
     def __iter__(self):
-        for p in self.predicates:
+        for p in self.literals:
             yield p
 
     def __len__(self):
-        return len(self.predicates)
+        return len(self.literals)
 
-    def add_predicate(self, predicate):
-        self.predicates.append(predicate)
-        predicateIdx = len(self.predicates)
-        if predicate.id in self.predicateIdxDict.keys():
-            self.predicateIdxDict[predicate.id].append(predicateIdx)
+    def add_literal(self, literal):
+        self.literals.append(literal)
+        literalIdx = len(self.literals)
+        if literal.id in self.literalIdxDict.keys():
+            self.literalIdxDict[literal.id].append(literalIdx)
         else:
-            self.predicateIdxDict[predicate.id] = [predicateIdx]
+            self.literalIdxDict[literal.id] = [literalIdx]
     
     #def sort(self):
-    #    self.predicates = sorted(self.predicates, key=lambda predicate:predicate.id)
+    #    self.literals = sorted(self.literals, key=lambda literal:literal.id)
     
     def negate(self):
-        for p in self.predicates:
+        for p in self.literals:
             p.negate()
         self.isConjunction = not self.isConjunction
         return self
 
     def copy(self):
-        return PredicateSet([p.copy() for p in self.predicates], self.isConjunction)
+        return LiteralSet([p.copy() for p in self.literals], self.isConjunction)
 
     def show(self, conjunctConnector = ' And ', disjunctConnector = ' Or '):
-        if len(self.predicates) == 0:
+        if len(self.literals) == 0:
             return ''
         if self.isConjunction:
             connector = conjunctConnector
@@ -555,23 +552,25 @@ class PredicateSet(object):
             connector = disjunctConnector
 
         out = ''
-        for i, p in enumerate(self.predicates):
+        for i, p in enumerate(self.literals):
             out += p.show()
-            if i < len(self.predicates) - 1:
+            if i < len(self.literals) - 1:
                 out += connector
         return out
 
-class Rule(PredicateSet):
+class Rule(LiteralSet):
     """
     A datalog rule that has the form h :- b1, b2, .., bn.
     """
     def __init__(self, head = None, body = None):
         if head is None:
-            head = NullPredicate()
+            head = NullLiteral()
         self.head = head
         self.functions = []
-        PredicateSet.__init__(self, body)
-        self.body = self.predicates
+        LiteralSet.__init__(self, body)
+        self.body = self.literals
+
+        self.conditionalRedundant = False
 
         # statistics
         self.z3Time = 0
@@ -583,44 +582,44 @@ class Rule(PredicateSet):
         if key == 0:
             return self.head
         else:
-            return PredicateSet.__getitem__(self, key-1)
+            return LiteralSet.__getitem__(self, key-1)
 
     def __iter__(self):
         yield self.head
-        for p in self.predicates:
+        for p in self.literals:
             yield p
 
     def __len__(self):
-        if isinstance(self.head, NullPredicate):
-            return len(self.predicates)
+        if isinstance(self.head, NullLiteral):
+            return len(self.literals)
         else:
-            return len(self.predicates) + 1
+            return len(self.literals) + 1
 
-    def add_predicate(self, predicate):
-        PredicateSet.add_predicate(self, predicate)
-        for arg in predicate.arguments:
+    def add_literal(self, literal):
+        LiteralSet.add_literal(self, literal)
+        for arg in literal.arguments:
             if isinstance(arg, FunctionSymbol):
-                self._add_function(arg, predicate)
+                self._add_function(arg, literal)
 
     def _add_function(self, funcSym, expandFrom):
-        #PredicateSet.add_predicate(self, ExpansionPredicate('=', FunctionExpansion(funcSym), funcSym, expandFrom))
-        self.functions.append(ExpansionPredicate(FunctionExpansion(funcSym), funcSym, expandFrom))
+        #LiteralSet.add_literal(self, ExpansionLiteral('=', FunctionExpansion(funcSym), funcSym, expandFrom))
+        self.functions.append(ExpansionLiteral(FunctionExpansion(funcSym), funcSym, expandFrom))
         self.functions.append(funcSym.function)
         for arg in funcSym.function.arguments:
             if isinstance(arg, FunctionSymbol):
                 self._add_function(arg, funcSym.function)
 
-    def match_predicate(self, predicateIdx, targetPredicate):
+    def match_literal(self, literalIdx, targetLiteral):
         """
-        This function tries to match the predicate at predicateIdx with targetPredicate by substituting variables. 
+        This function tries to match the literal at literalIdx with targetLiteral by substituting variables. 
         If success, a substitution list is returned, otherwise None is returned.
-        The two predicates must have different variable symbols.
+        The two literals must have different variable symbols.
         """
-        if self.predicates[predicateIdx].id != targetPredicate.id:
+        if self.literals[literalIdx].id != targetLiteral.id:
             return False
         self.substitutionTag += 1
-        matchingArgs = self.predicates[predicateIdx].arguments
-        targetArgs = targetPredicate.arguments
+        matchingArgs = self.literals[literalIdx].arguments
+        targetArgs = targetLiteral.arguments
         for matchingArg, targetArg in zip(matchingArgs, targetArgs):
             if matchingArg.isConstant:
                 if matchingArg != targetArg:
@@ -636,9 +635,9 @@ class Rule(PredicateSet):
             else:
                 self.substitute(targetArg, matchingArg)
                 if type(matchingArg) == VariableExpansion and type(targetArg) == Constant:
-                    # if we know that the matching symbol is an expansion symbol from a variable, and the target symbol is also a constant (not a constant from ground instantiation), then we can check if the matching will make the equality predicate for the expansion unsatisfiable, to avoid further unnecessary matchings
-                    for p in self.predicates[predicateIdx].expandTo:
-                        if type(p) == ExpansionPredicate and p.evaluate() is False:
+                    # if we know that the matching symbol is an expansion symbol from a variable, and the target symbol is also a constant (not a constant from ground instantiation), then we can check if the matching will make the equality literal for the expansion unsatisfiable, to avoid further unnecessary matchings
+                    for p in self.literals[literalIdx].expandTo:
+                        if type(p) == ExpansionLiteral and p.evaluate() is False:
                             self.undo_substitution()
                             return False
         return True
@@ -648,9 +647,9 @@ class Rule(PredicateSet):
         if (replacingSym.id == replacedSym.id):
             print(f'The replacing symbol {replacingSym.show()} is the same as the replaced symbol {replacedSym.show()}.')
             return
-        for predicate in (self.predicates + self.functions):
-            predicate.substitutionTag = self.substitutionTag
-            predicate.substitute(replacingSym, replacedSym)
+        for literal in (self.literals + self.functions):
+            literal.substitutionTag = self.substitutionTag
+            literal.substitute(replacingSym, replacedSym)
 
     def undo_substitution(self, tag = None):
         """Undo all the substitutions with a substitution tag greater than a given tag or equal to current substitution tag."""
@@ -664,13 +663,13 @@ class Rule(PredicateSet):
                 self.substitutionTag = tag
         else:
             self.substitutionTag -= 1
-        for predicate in (self.predicates + self.functions):
-            predicate.undo_substitution(tag = self.substitutionTag)
+        for literal in (self.literals + self.functions):
+            literal.undo_substitution(tag = self.substitutionTag)
 
     def ground(self):
         """Ground instantiation."""
         self.substitutionTag += 1
-        for p in (self.predicates + self.functions):
+        for p in (self.literals + self.functions):
             for a in p.arguments:
                 # fix me, think about what to do with arithmetics when grounding a clause
                 if isinstance(a, FunctionSymbol): continue
@@ -680,7 +679,7 @@ class Rule(PredicateSet):
         return self
 
     def undo_ground(self):
-        for p in self.predicates:
+        for p in self.literals:
             for a in p.arguments:
                 if isinstance(a, GroundSymbol):
                     self.substitute(a.groundedFrom, a)
@@ -688,11 +687,14 @@ class Rule(PredicateSet):
 
     def expansion(self):
         """
-        For every occurrence of constant or recurrence of variable in extensional relation (non-builtin predicate), replace the constant/variable with a new variable, and add an equality to the clause using the contant/variable and the new variable.
+        For every occurrence of constant or recurrence of variable in extensional relation (non-builtin literal), replace the constant/variable with a new variable, and add an equality to the clause using the contant/variable and the new variable.
         """
         firstAppearance = []
-        predicates = [p for p in self.predicates if type(p) == Predicate]
-        for p in predicates:
+        literals = [p for p in self.literals if type(p) == Literal]
+        for p in literals:
+            if p.isNegated:
+                # we cannot expand negated literals
+                continue
             for idx, a in enumerate(p.arguments):
                 exSym = None
                 if type(a) == Constant:
@@ -704,67 +706,67 @@ class Rule(PredicateSet):
                         firstAppearance.append(a.id)
                 if exSym:
                     p.replace(exSym, idx)
-                    exPredicate = ExpansionPredicate(exSym, a, p)
-                    self.add_predicate(exPredicate)
-                    p.expandTo.append(exPredicate)
+                    exLiteral = ExpansionLiteral(exSym, a, p)
+                    self.add_literal(exLiteral)
+                    p.expandTo.append(exLiteral)
         return self
 
     def undo_expansion(self):
         """Reverse expansion step."""
-        # remove expansion predicates that have their source predicates remained in the clause
-        exPredicates = [p for p in self.predicates if type(p) == ExpansionPredicate]
+        # remove expansion literals that have their source literals remained in the clause
+        exLiterals = [p for p in self.literals if type(p) == ExpansionLiteral]
         loop = True
         while loop:
             loop = False
-            for exPredicate in exPredicates:
-                    targetPredicate = exPredicate.expandFrom
-                    if isinstance(exPredicate.lhs, ExpansionSymbol):
-                        # Since the every expansion variable is unique, if an expansion Predicate no longer contains a expansion symbol, it means the predicate from which the variable is expanded has matched with certain predicate and the expansion symbol has been substituted.
-                        self.substitute(exPredicate.rhs, exPredicate.lhs)
-                        self.predicates.remove(exPredicate)
+            for exLiteral in exLiterals:
+                    targetLiteral = exLiteral.expandFrom
+                    if isinstance(exLiteral.lhs, ExpansionSymbol):
+                        # Since the every expansion variable is unique, if an expansion Literal no longer contains a expansion symbol, it means the literal from which the variable is expanded has matched with certain literal and the expansion symbol has been substituted.
+                        self.substitute(exLiteral.rhs, exLiteral.lhs)
+                        self.literals.remove(exLiteral)
                         loop = True
                     else:
-                        # the predicate from which the variable is expanded is gone
-                        # it is still possible that we need to remove the expansion equality predicate, when one side is a constant while the other side is a variable that appears in other non-extensional predicates
+                        # the literal from which the variable is expanded is gone
+                        # it is still possible that we need to remove the expansion equality literal, when one side is a constant while the other side is a variable that appears in other non-extensional literals
                         replacingSym = None
                         replacedSym = None
-                        if (type(exPredicate.lhs) == Constant) and (type(exPredicate.rhs) in [Variable, GroundSymbol]): # ground symbol is instantiated from a variable
-                            replacingSym = exPredicate.lhs
-                            replacedSym = exPredicate.rhs
-                        elif (type(exPredicate.rhs) == Constant) and (type(exPredicate.lhs) == GroundSymbol):
-                            replacingSym = exPredicate.rhs
-                            replacedSym = exPredicate.lhs
+                        if (type(exLiteral.lhs) == Constant) and (type(exLiteral.rhs) in [Variable, GroundSymbol]): # ground symbol is instantiated from a variable
+                            replacingSym = exLiteral.lhs
+                            replacedSym = exLiteral.rhs
+                        elif (type(exLiteral.rhs) == Constant) and (type(exLiteral.lhs) == GroundSymbol):
+                            replacingSym = exLiteral.rhs
+                            replacedSym = exLiteral.lhs
                         if replacedSym:
-                            for p in self.predicates:
-                                if (type(p) != ExpansionPredicate) and (replacedSym.id in p.argIdx):
+                            for p in self.literals:
+                                if (type(p) != ExpansionLiteral) and (replacedSym.id in p.argIdx):
                                     self.substitute(replacingSym, replacedSym)
-                                    self.predicates.remove(exPredicate)
+                                    self.literals.remove(exLiteral)
                                     loop = True
                                     break
 
-        # also remove comparison predicates that evaluated to True
-        compPred = [p for p in self.predicates if isinstance(p, ComparisonPredicate)]
-        for p in compPred:
+        # also remove comparison literals that evaluated to True
+        compLtrl = [p for p in self.literals if isinstance(p, ComparisonLiteral)]
+        for p in compLtrl:
             if p.evaluate() is True:
-                self.predicates.remove(p)
+                self.literals.remove(p)
 
-        # also remove repeated comparison predicates
-        repPred = []
-        compPred = [p for p in self.predicates if isinstance(p, ComparisonPredicate)]
-        for i, pi in enumerate(compPred[1:], 1):
-            for pj in compPred[0: i]:
+        # also remove repeated comparison literals
+        repLtrl = []
+        compLtrl = [p for p in self.literals if isinstance(p, ComparisonLiteral)]
+        for i, pi in enumerate(compLtrl[1:], 1):
+            for pj in compLtrl[0: i]:
                 if ((pi.arguments[0].id == pj.arguments[0].id) and (pi.arguments[1].id == pj.arguments[1].id)):
-                    repPred.append(pi)
+                    repLtrl.append(pi)
                     break
                 elif (isinstance(pi, Equal) and isinstance(pj, Equal)) and ((pi.arguments[0].id == pj.arguments[1].id) and (pi.arguments[1].id == pj.arguments[0].id)):
-                    repPred.append(pi)
+                    repLtrl.append(pi)
                     break
-        for p in repPred:
-            self.predicates.remove(p)
+        for p in repLtrl:
+            self.literals.remove(p)
 
-        for i,p in enumerate(self.predicates):
-            if isinstance(p, ExpansionPredicate):
-                self.predicates[i] = Equal(p.lhs, p.rhs)
+        for i,p in enumerate(self.literals):
+            if isinstance(p, ExpansionLiteral):
+                self.literals[i] = Equal(p.lhs, p.rhs)
             p.expandTo = []
 
         return self
@@ -779,13 +781,13 @@ class Rule(PredicateSet):
         # ground instantiation
         subsumedClause.ground()
 
-        subsumedExRelations = PredicateSet([p for p in subsumedClause.body if type(p) == Predicate])
+        subsumedExRelations = LiteralSet([p for p in subsumedClause.body if type(p) == Literal])
         subsumedExRelationId = set([p.id for p in subsumedExRelations])
-        subsumedEvaluables = PredicateSet([p for p in subsumedClause.body if type(p) != Predicate])
-        allSubsumingExRelationIdx = [i for i in range(len(self.body)) if type(self.body[i]) == Predicate]
+        subsumedEvaluables = LiteralSet([p for p in subsumedClause.body if type(p) != Literal])
+        allSubsumingExRelationIdx = [i for i in range(len(self.body)) if type(self.body[i]) == Literal]
         size = len(self.body)
         potentialMatch = []
-        matchShifter = [0]*len(allSubsumingExRelationIdx) #records current matched predicate for each predicate
+        matchShifter = [0]*len(allSubsumingExRelationIdx) #records current matched literal for each literal
         for i in range(len(allSubsumingExRelationIdx)):
             potentialMatch.append([p for p in subsumedExRelations if p.id == self.body[i].id])
 
@@ -806,31 +808,31 @@ class Rule(PredicateSet):
                     continue
 
                 # if not all subsuming extensional relations are in the body of the subsumed clause, do not bother to test.
-                if not (set([self.body[i].id for i in matchingIdx if type(self.body[i]) == Predicate]) <= subsumedExRelationId):
+                if not (set([self.body[i].id for i in matchingIdx if type(self.body[i]) == Literal]) <= subsumedExRelationId):
                     continue
 
-                subsumingExRelationIdx = [i for i in matchingIdx if type(self.body[i]) == Predicate]
+                subsumingExRelationIdx = [i for i in matchingIdx if type(self.body[i]) == Literal]
                 subsumingExRelations = [self.body[i] for i in subsumingExRelationIdx]
-                subsumingEvaluables = [self.body[i] for i in matchingIdx if type(self.body[i]) != Predicate]
+                subsumingEvaluables = [self.body[i] for i in matchingIdx if type(self.body[i]) != Literal]
 
                 # Subsuming evaluables should also include the expansion part
                 for p in subsumingExRelations:
                     subsumingEvaluables += p.expandTo
-                subsumingEvaluables = PredicateSet(subsumingEvaluables)
+                subsumingEvaluables = LiteralSet(subsumingEvaluables)
                 #print(f"subsumingExRelations: {Rule(body = subsumingExRelations).show()}")
                 #print(f"subsumingEvaluables: {subsumingEvaluables.show()}\n")
                 N = len(subsumingExRelationIdx)
-                #print(f'subsuming extensional relations: {PredicateSet(subsumingExRelations).show()}')
+                #print(f'subsuming extensional relations: {LiteralSet(subsumingExRelations).show()}')
                 #print(f'subsuming evaluables: {subsumingEvaluables.show()}\n')
                 if N == 0: continue
-                predItr = 0
-                predIdx = subsumingExRelationIdx[predItr]
-                while predItr < N and predItr >= 0:
-                    # match subsumingExRelations[predItr]
-                    matchedPredicate = potentialMatch[predIdx][matchShifter[predIdx]]
-                    match = self.match_predicate(predIdx, matchedPredicate)
+                ltrlItr = 0
+                ltrlIdx = subsumingExRelationIdx[ltrlItr]
+                while ltrlItr < N and ltrlItr >= 0:
+                    # match subsumingExRelations[ltrlItr]
+                    matchedLiteral = potentialMatch[ltrlIdx][matchShifter[ltrlIdx]]
+                    match = self.match_literal(ltrlIdx, matchedLiteral)
                     if match:
-                        if (predItr == N - 1):  # all predicates matched, check comparion formulas
+                        if (ltrlItr == N - 1):  # all literals matched, check comparion formulas
                             unsat = True
                             if (len(subsumingEvaluables) > 0):
                                 z3Start = timer()
@@ -840,12 +842,17 @@ class Rule(PredicateSet):
                                 self.z3Time += (z3End - z3Start)
                             if unsat:
                                 residueRelations = [p for i,p in enumerate(self.body) if i not in subsumingExRelationIdx and p not in subsumingEvaluables]
-                                residueEvaluables = PredicateSet([p for p in residueRelations if type(p) != Predicate])
+                                residueEvaluables = LiteralSet([p for p in residueRelations if type(p) != Literal])
                                 # check if residue is redundant
+                                # a residue is redundant if it is evaluated to True, i.e., its body is evaluated to False
+                                # we check if the evaluables in the body is satisfiable, if not (which means False), then this residue is redundant
                                 sat = True
                                 if (len(residueEvaluables) > 0):
                                     z3Start = timer()
-                                    sat = check_sat([residueEvaluables, subsumedEvaluables])
+                                    if self.conditionalRedundant: # if check for conditional redundant, a residue is considered redundant if it is evaluated to True under the condition of the body of the subsumed clause
+                                        sat = check_sat([residueEvaluables, subsumedEvaluables])
+                                    else:
+                                        sat = check_sat([residueEvaluables])
                                     z3End = timer()
                                     self.z3InvokedTimes += 1
                                     self.z3Time += (z3End - z3Start)
@@ -856,12 +863,15 @@ class Rule(PredicateSet):
                             else:
                                 # In this case, we have matched all the extensional relations in the subsuming subclause, but the evaluable relations do not agree, we then leave the evaluable relations as residue if they don't make a redundant residue.
                                 residueRelations = [p for i,p in enumerate(self.body) if i not in subsumingExRelationIdx]
-                                residueEvaluables = PredicateSet([p for p in residueRelations if type(p) != Predicate])
+                                residueEvaluables = LiteralSet([p for p in residueRelations if type(p) != Literal])
                                 # check if residue is redundant
                                 sat = True
                                 if (len(residueEvaluables) > 0):
                                     z3Start = timer()
-                                    sat = check_sat([residueEvaluables, subsumedEvaluables])
+                                    if self.conditionalRedundant:
+                                        sat = check_sat([residueEvaluables, subsumedEvaluables])
+                                    else:
+                                        sat = check_sat([residueEvaluables])
                                     z3End = timer()
                                     self.z3InvokedTimes += 1
                                     self.z3Time += (z3End - z3Start)
@@ -872,19 +882,19 @@ class Rule(PredicateSet):
 
                             self.undo_substitution()
                         else:
-                            predItr += 1
-                            predIdx = subsumingExRelationIdx[predItr]
+                            ltrlItr += 1
+                            ltrlIdx = subsumingExRelationIdx[ltrlItr]
                             continue
 
-                    while predItr >= 0:
-                        if matchShifter[predIdx]+1 == len(potentialMatch[predIdx]):
-                            # if there is not more candidate for current predicate to match, we release the matching of the previous predicate, and try to match the previous predicate to the next candidate
+                    while ltrlItr >= 0:
+                        if matchShifter[ltrlIdx]+1 == len(potentialMatch[ltrlIdx]):
+                            # if there is not more candidate for current literal to match, we release the matching of the previous literal, and try to match the previous literal to the next candidate
                             self.undo_substitution()
-                            matchShifter[predIdx] = 0
-                            predItr -= 1
-                            predIdx = subsumingExRelationIdx[predItr]
+                            matchShifter[ltrlIdx] = 0
+                            ltrlItr -= 1
+                            ltrlIdx = subsumingExRelationIdx[ltrlItr]
                         else:
-                            matchShifter[predIdx] += 1
+                            matchShifter[ltrlIdx] += 1
                             break
         self.undo_ground().undo_expansion()
         subsumedClause.undo_ground()
@@ -897,36 +907,36 @@ class Rule(PredicateSet):
             return ret
 
     def sort_clause(self):
-        self.predicates = sorted(self.predicates, key=lambda predicate:predicate.id)
+        self.literals = sorted(self.literals, key=lambda literal:literal.id)
 
     def copy(self):
         ret = Rule(head = self.head.copy(), body = [p.copy() for p in self.body])
-        for nPred, oPred in zip(ret.body, self.body):
-            for p in oPred.expandTo:
-                if p not in self.body: continue # this is a function auxiliary predicate
-                nExPred = ret.body[self.body.index(p)]
-                nExPred.expandFrom = nPred
-                nPred.expandTo.append(nExPred)
+        for nLtrl, oLtrl in zip(ret.body, self.body):
+            for p in oLtrl.expandTo:
+                if p not in self.body: continue # this is a function auxiliary literal
+                nExLtrl = ret.body[self.body.index(p)]
+                nExLtrl.expandFrom = nLtrl
+                nLtrl.expandTo.append(nExLtrl)
         return ret
 
     def negate(self):
         print('Negation on a Rule object is undefined!')
 
     def show(self):
-        return f"{self.head.show()} :- {PredicateSet.show(self, conjunctConnector = ', ')}."
+        return f"{self.head.show()} :- {LiteralSet.show(self, conjunctConnector = ', ')}."
 
 def check_sat(clauses):
     s = Solver()
     for c in clauses:
-        predicates = []
-        for p in c.predicates:
+        literals = []
+        for p in c.literals:
             if isinstance(p, Function): continue # the corresponding arithmetic symbol will extend itself to this arithmetic expression during evaluation
             if p.isNegated:
-                predicates.append(Not(p.evaluate()))
+                literals.append(Not(p.evaluate()))
             else:
-                predicates.append(p.evaluate())
+                literals.append(p.evaluate())
         if c.isConjunction:
-            s.add(predicates)
+            s.add(literals)
         else:
-            s.add(Or(predicates))
+            s.add(Or(literals))
     return s.check() == sat
